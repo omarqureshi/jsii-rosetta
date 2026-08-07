@@ -1,5 +1,8 @@
 public class MyResource {
-    public final String env;
+    private final String env;
+    public String getEnv() {
+        return this.env;
+    }
     private final String resource;
 
     public MyResource(String resource) {

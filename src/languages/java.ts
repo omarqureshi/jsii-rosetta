@@ -8,7 +8,7 @@ import { TargetLanguage } from '../languages/target-language';
 import { OTree, NO_SYNTAX } from '../o-tree';
 import { AstRenderer } from '../renderer';
 import { SubmoduleReference } from '../submodule-reference';
-import { isReadOnly, matchAst, nodeOfType, quoteStringLiteral, visibility } from '../typescript/ast-utils';
+import { isReadOnly, isStatic, matchAst, nodeOfType, quoteStringLiteral, visibility } from '../typescript/ast-utils';
 import { ImportStatement } from '../typescript/imports';
 import { isEnumAccess, isStaticReadonlyAccess, determineReturnType } from '../typescript/types';
 import { fmap, setExtend } from '../util';
@@ -104,7 +104,7 @@ export class JavaVisitor extends DefaultVisitor<JavaContext> {
    * Bump this when you change something in the implementation to invalidate
    * existing cached translations.
    */
-  public static readonly VERSION = '1';
+  public static readonly VERSION = '2';
 
   /**
    * Aliases for modules
@@ -251,6 +251,18 @@ export class JavaVisitor extends DefaultVisitor<JavaContext> {
   public override propertyDeclaration(node: ts.PropertyDeclaration, renderer: JavaRenderer): OTree {
     const vis = visibility(node);
 
+    // Public (and protected) instance properties render as a private field
+    // plus an accessor: everything else in the translation uses the getter
+    // convention — behavioral interfaces declare `getX()` and property
+    // *accesses* render `obj.getX()` (convertPropertyToGetter) — so a bare
+    // public field would neither implement an interface nor be reachable
+    // from the rendered access sites. Private and static properties stay
+    // plain fields (`this.x` renders as direct field access; static
+    // readonly accesses are exempted from the getter convention).
+    if (vis !== 'private' && !isStatic(node)) {
+      return this.renderAccessorProperty(node, renderer);
+    }
+
     return new OTree(
       [
         vis,
@@ -266,6 +278,50 @@ export class JavaVisitor extends DefaultVisitor<JavaContext> {
         canBreakLine: true,
       },
     );
+  }
+
+  private renderAccessorProperty(node: ts.PropertyDeclaration, renderer: JavaRenderer): OTree {
+    const propertyName = renderer.convert(node.name);
+    const propertyType = this.renderTypeNode(node.type, renderer, 'Object');
+
+    const field = new OTree(
+      [],
+      ['private', isReadOnly(node) ? ' final' : '', ' ', propertyType, ' ', propertyName, ';'],
+      { canBreakLine: true },
+    );
+
+    const getter = new OTree(
+      [],
+      [
+        'public ',
+        propertyType,
+        ' ',
+        `get${capitalize(renderer.textOf(node.name))}() `,
+        this.renderBlock([new OTree(['\n'], ['return this.', propertyName, ';'])]),
+      ],
+      { canBreakLine: true },
+    );
+
+    const setter = isReadOnly(node)
+      ? NO_SYNTAX
+      : new OTree(
+          [],
+          [
+            'public void ',
+            `set${capitalize(renderer.textOf(node.name))}(`,
+            propertyType,
+            ' ',
+            propertyName,
+            ') ',
+            this.renderBlock([new OTree(['\n'], ['this.', propertyName, ' = ', propertyName, ';'])]),
+          ],
+          { canBreakLine: true },
+        );
+
+    return new OTree([], [field, getter, setter], {
+      canBreakLine: true,
+      separator: '\n',
+    });
   }
 
   public override constructorDeclaration(node: ts.ConstructorDeclaration, renderer: JavaRenderer): OTree {
