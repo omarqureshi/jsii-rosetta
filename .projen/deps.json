@@ -106,10 +106,6 @@
       "type": "build"
     },
     {
-      "name": "tar",
-      "type": "build"
-    },
-    {
       "name": "ts-jest",
       "type": "build"
     },
@@ -157,6 +153,11 @@
     },
     {
       "name": "stream-json",
+      "type": "runtime"
+    },
+    {
+      "name": "tar",
+      "version": "^6.2.1",
       "type": "runtime"
     },
     {

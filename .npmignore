@@ -22,7 +22,6 @@ tsconfig.tsbuildinfo
 /CODE_OF_CONDUCT.md
 /CONTRIBUTING.md
 /build-tools/
-/fixtures/
 /projenrc/
 *.tsbuildinfo
 *.d.ts.map
